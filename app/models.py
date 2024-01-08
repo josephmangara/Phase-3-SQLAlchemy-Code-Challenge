@@ -101,9 +101,12 @@ class RestaurantCustomers(Base):
         return f'RestaurantCustomers(restaurant_id={self.restaurant_id}, ' +\
             f'customer_id={self.customer_id})'
 
-# restaurant = session.query(Restaurant).first()
-# print(restaurant.all_reviews(session))
-# session.close()
+#examples 
+restaurants = session.query(Restaurant).all()
+print(restaurants)
+customers = session.query(Customer).all()
+print(customers)
 
-# restaurants = session.query(Restaurant).all()
-# print(restaurants)
+customer = session.query(Customer).first()
+print(customer.full_name())
+print(customer.favorite_restaurant())
