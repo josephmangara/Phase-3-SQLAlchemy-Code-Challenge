@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
 from sqlalchemy import create_engine, desc
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship, backref, sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import (CheckConstraint,
-    Column, Integer, ForeignKey, String)
-
-engine = create_engine('sqlite:///restaurants.db')
+from sqlalchemy import (Column, Integer, ForeignKey, String, func)
 
 Base = declarative_base()
+
+engine = create_engine('sqlite:///restaurants.db')
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+session = Session()
 
 class Restaurant(Base):
     __tablename__ = "restaurants"
 
     id = Column(Integer(), primary_key=True)
-    name = (String)
-    price = (Integer)
+    name = Column(String)
+    price = Column(Integer)
 
-    reviews = relationship('Review', backref=backref('restaurant'))
+    reviews = relationship('Review', back_populates='restaurant')
+    restaurant_customers = relationship('RestaurantCustomers', back_populates='restaurant')
 
+    @classmethod
+    def fanciest(cls, session):
+        return session.query(cls).order_by(desc(cls.price)).first()
+
+    def all_reviews(self, session):
+        return [
+            f"Review for {self.name} by {review.customer.full_name()}: {review.star_rating} stars."
+            for review in self.reviews
+    ]
     def __repr__(self):
         return f'Restaurant(id={self.id}, ' + \
             f'name="{self.name}", ' + \
@@ -26,11 +38,29 @@ class Restaurant(Base):
 class Customer(Base):
     __tablename__ = 'customers'
 
-    id = Column(Integer(), primary_key=True)
-    first_name = (String)
-    last_name = (String)
+    id = Column(Integer, primary_key=True)
+    first_name = Column(String)
+    last_name = Column(String)
 
-    reviews = relationship('Review', backref=backref('customer'))
+    reviews = relationship('Review', back_populates='customer')
+    restaurant_customers = relationship('RestaurantCustomers', back_populates='customer')
+
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+    
+    def favorite_restaurant(self):
+        return max(self.reviews, key=lambda review: review.star_rating).restaurant
+
+    def add_review(self, session, restaurant, rating):
+        review = Review(star_rating=rating, restaurant=restaurant, customer=self)
+        session.add(review)
+        session.commit()
+
+    def delete_reviews(self, session, restaurant):
+        reviews_to_delete = [review for review in self.reviews if review.restaurant == restaurant]
+        for review in reviews_to_delete:
+            session.delete(review)
+        session.commit()
 
     def __repr__(self):
         return f'Customer(id={self.id}, ' + \
@@ -39,14 +69,17 @@ class Customer(Base):
 
 class Review(Base):
     __tablename__ = 'reviews'
-    __table_args__ = (
-         CheckConstraint('star_rating BETWEEN 0 AND 5', name='star_rating_between_0_and_5')
-    )
 
-    id = Column(Integer(), primary_key=True)
-    star_rating = (Integer)
-    restaurant_id = Column(Integer(), ForeignKey('restuarants.id'))
-    customer_id = Column(Integer(), ForeignKey('customers.id'))
+    id = Column(Integer, primary_key=True)
+    star_rating = Column(Integer)
+    restaurant_id = Column(Integer, ForeignKey('restaurants.id'))
+    customer_id = Column(Integer, ForeignKey('customers.id'))
+
+    restaurant = relationship('Restaurant', back_populates='reviews')
+    customer = relationship('Customer', back_populates='reviews')
+    
+    def full_review(self):
+        return f"Review for {self.restaurant.name} by {self.customer.full_name()}: {self.star_rating} stars."
 
     def __repr__(self):
         return f'Review(id={self.id}, ' + \
@@ -67,3 +100,10 @@ class RestaurantCustomers(Base):
     def __repr__(self):
         return f'RestaurantCustomers(restaurant_id={self.restaurant_id}, ' +\
             f'customer_id={self.customer_id})'
+
+# restaurant = session.query(Restaurant).first()
+# print(restaurant.all_reviews(session))
+# session.close()
+
+# restaurants = session.query(Restaurant).all()
+# print(restaurants)
